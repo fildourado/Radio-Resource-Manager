@@ -27,11 +27,12 @@ class_3 = {"priority": 3,               # priority
            "avg_queue_delay": 0.6e-3,   # average queue delay desired
            "packet_size": 1200}         # bits
 
-packet_s = {"src": -1,  # User ID
-            "dest": -1,  # MS ID
-            "size": -1,  # bits
-            "TOD": -1,  # Time of departure from User
-            "TOA": -1}  # Time of arrival at MS
+packet_s = {"src": -1,                  # User ID
+            "dest": -1,                 # MS ID
+            "size": -1,                 # bits
+            "T_MS": -1,                 # Time to transmit to MS
+            "TOD": -1,                  # Time of departure from User
+            "TOA": -1}                  # Time of arrival at MS
 
 
 class Radio_Resource_Manager(object):
@@ -40,7 +41,7 @@ class Radio_Resource_Manager(object):
     """
 
     def __init__(self, RRM_id, N, N_MS, downlink_bw):
-        print "\nInitializing Radio Resource Manager (ID %d)" % (RRM_id)
+        print "\nInitializing Radio Resource Manager (ID %d) and %d users" % (RRM_id, N)
 
         ################################################################################################################
         # Input Parameters
@@ -57,8 +58,10 @@ class Radio_Resource_Manager(object):
         self.T_pkt_2 = (class_2.get("packet_size") / class_2.get("des_throughput"))*1e3
         self.T_pkt_3 = (class_3.get("packet_size") / class_3.get("des_throughput"))*1e3
 
-        self.N_burst_1 = class_1.get("burst") / self.T_pkt_1            # number of packets to Tx in burst mode
-        self.N_burst_2 = class_2.get("burst") / self.T_pkt_2            # number of packets to Tx in burst mode
+        self.N_burst_1 = math.floor(class_1.get("burst") / self.T_pkt_1)            # number of packets to Tx in burst mode
+        self.N_burst_2 = math.floor(class_2.get("burst") / self.T_pkt_2)            # number of packets to Tx in burst mode
+        self.c3_packets_per_msec = (0.4e6 / class_3.get("packet_size"))/1000
+        #print self.c3_packets_per_msec
 
         self.class_lookup = [class_1, class_2, class_3]                 # quick class lookup table based on class ID
         self.N_burst_lookup = [self.N_burst_1, self.N_burst_2, -1]
@@ -73,12 +76,15 @@ class Radio_Resource_Manager(object):
         self.usr_state = [0]*self.N
         self.MS_SE = [0]*self.N_MS                      # contains the spectral efficiencies assigned to each MS
         self.usr_start_time = [-1] * self.N
+        self.burst_tx_time = [-1] * self.N
+        self.class_n_usrs = -1
 
-        self.delays_per_user = [0] * self.N
-        self.transmissions_per_user = [0] * self.N
+        self.delays_per_user = np.zeros(self.N)
+        self.transmissions_per_user = np.zeros(self.N)
+        self.MS_received_pkts = np.zeros(self.N_MS)
 
         # default to empty packet
-        self.pkt_to_tx = self.get_new_packet(-1, -1, -1, -1)
+        self.pkt_to_tx = self.get_new_packet(-1, -1, -1, -1, -1)
 
         self.transmitting_to_MS = False
         self.tx_expiration = -1
@@ -100,124 +106,162 @@ class Radio_Resource_Manager(object):
     def reset(self):
         print "Resetting RRM"
 
+    ####################################################################################################################
     """
     Main Functions
     """
+    ####################################################################################################################
 
-    #
     def update_user_state(self, current_slt):
+        #print "\nUpdating User State**"
         for usr in range(self.N):
             class_id = self.user_class_map[usr]
-            print "\tUpdating usr %d class %d" % (usr, class_id)
+            #print "\tUpdating usr %d class %d" % (usr, class_id)
 
             if class_id == 3:
-                print "error: not implemented yet"
+                a = 0
+                #print "error: not implemented yet"
+                #sys.exit()
+                if self.usr_start_time[usr] >= current_slt:
+                    self.usr_start_time[usr] = current_slt + 1
+                    # generate a tx burst time schedule that is based on a poisson RV
+                    if self.burst_tx_time[usr] < current_slt:
+                        self.burst_tx_time[usr] = current_slt + np.random.poisson(self.c3_packets_per_msec, 1)
+                        #print current_slt
+                        #print self.burst_tx_time[usr]
+
+
             else:
                 # class 1 or 2 type user
+                if self.usr_start_time[usr] == current_slt:
 
-                # if the user is idle, check if its time to burst
-                if self.usr_state[usr] == 0:
-                    if self.usr_start_time[usr] == current_slt:
-                        self.usr_state[usr] = 1                                 # update user state to burst mode
-                        class_id = self.user_class_map[usr] - 1                 # get the class id - 0 indexed for LUT
-                        burst_period = self.class_lookup[class_id].get("burst") # get the duration of the burst period
-                        N = self.N_burst_lookup[class_id]
-                        if N == -1:
-                            print "Error: Should never be looking at class ID 3 in this part of code"
-                            sys.exit()
+                    #print "\tSOB for usr %d" % (usr)
+                    self.usr_state[usr] = 1                                 # update user state to burst mode
+                    class_id = self.user_class_map[usr] - 1                 # get the class id - 0 indexed for LUT
+                    burst_period = self.class_lookup[class_id].get("burst") # get the duration of the burst period
+                    pause_period = self.class_lookup[class_id].get("pause")
+                    N_pkts_in_burst = self.N_burst_lookup[class_id]
 
-                        # create a Time-To-Transmit vector so packets will be sent at a specific time during a burst
-                        self.burst_tx_time[usr] = current_slt + np.linspace(0, burst_period-1, N)
+                    # update the time when this user can come back and schedule more packet transmission times
+                    self.usr_start_time[usr] = current_slt + burst_period + pause_period
 
-                    elif self.usr_start_time[usr] == -1:
-                        print "Error: Should never have negative start time"
+                    if N_pkts_in_burst == -1:
+                        print "Error: Should never be looking at class ID 3 in this part of code"
                         sys.exit()
 
+                    # create a Time-To-Transmit vector so packets will be sent at a specific time during a burst
+                    step = int(math.floor(burst_period / N_pkts_in_burst)) # msec per packet
+                    #pkt_start_times = range(0, int(burst_period), step)
+                    pkt_start_times = np.linspace(0,burst_period-1,N_pkts_in_burst)
+                    #self.burst_tx_time[usr] = [(current_slt + t) for t in pkt_start_times]
+                    self.burst_tx_time[usr] = current_slt + (pkt_start_times.astype(int))
 
 
-                        # user is in burst period
-            #else:
-
-
-
+        #print "\tState of TX burst schedule after after update:"
+        #print self.burst_tx_time
 
     def update_user_queues(self, current_slt):
-        print "\nUpdating User Queues**"
+        #print "\nUpdating User Queues**"
         # check the current state of each user. If in a burst period, add a packet to its queue.
         for usr in range(self.N):
 
-            # state of 0 is idle
-            if self.usr_state[usr] == 0:
-                # stay idle
-                self.usr_state[usr] = 0
+            idx_of_burst_time = np.where( self.burst_tx_time[usr]==current_slt)
+            if idx_of_burst_time[0].size == 0:
+                a = 0
+                # not time to tx packet
+                #print "\tNot time to TX yet for usr %d" % (usr)
 
-            # state of 1 is burst so add packet to queue
-            else:
-                class_id = self.user_class_map[usr]
+            elif idx_of_burst_time[0].size == 1:
+                #print "\tTxing a packet for usr %d" % (usr)
+
+                class_id = self.user_class_map[usr] - 1
                 size = self.class_lookup[class_id]["packet_size"]
+                dest = self.get_rand_ms_id()
+                tx_rate = self.MS_SE[dest]                          # bps
+                t_MS = (size / tx_rate) * 1e3                       # time to tx to MS
+
                 # make a new packet
-                new_pkt = self.get_new_packet(usr, self.get_rand_ms_id(), size, current_slt)
+                new_pkt = self.get_new_packet(usr, dest, size, t_MS, current_slt)
 
                 # add the packet to the that users queue
                 self.push_packet(usr, new_pkt)
 
+            else:
+                print "Error: Can't be time to TX multiple times in TX burst array"
+                sys.exit()
 
+
+        #print "State of user queues after after update:"
+        #print self.user_queues
+
+
+    # schedule 1 time slots worth of packets to TX
+    # based on the priority scheme
     def priority_based_scheduler(self):
-        print "\n**Priority Based Scheduler**"
-        a = 0
-        # check the user queues for who gets to transmit next
-        #for usr in range(self.N):
-         #   if self.user_queues[usr].empty():
+        #print "\n**Priority Based Scheduler**"
 
+        tx_time = 1.0 # msec
+        done = False
+
+        while not done:
+            if self.class_n_packets_avail(1):
+                #print "Class 1 packets available"
+
+                for usr in self.class_n_usrs[0]:
+                    if len(self.user_queues[usr]) > 0:
+                        t_to_dec = self.user_queues[usr][-1].get("T_MS")
+                        if (tx_time - t_to_dec) > 0.0:
+                            # pop the usr packet off the queue and add it to the tx queue
+                            pkt = self.pop_packet(usr)
+                            self.transmit_queue.appendleft(pkt)
+                            tx_time = tx_time - t_to_dec
+                        else:
+                            done = True
+
+                done = True
+            elif self.class_n_packets_avail(2):
+                #print "Class 2 packets available"
+                for usr in self.class_n_usrs[1]:
+                    if len(self.user_queues[usr]) > 0:
+                        t_to_dec = self.user_queues[usr][-1].get("T_MS")
+                        if (tx_time - t_to_dec) > 0.0:
+                            # pop the usr packet off the queue and add it to the tx queue
+                            pkt = self.pop_packet(usr)
+                            self.transmit_queue.appendleft(pkt)
+                            tx_time = tx_time - t_to_dec
+                        else:
+                            done = True
+
+            elif self.class_n_packets_avail(3):
+                #print "Class 3 packets available"
+                for usr in self.class_n_usrs[2]:
+                    if len(self.user_queues[usr]) > 0:
+                        t_to_dec = self.user_queues[usr][-1].get("T_MS")
+                        if (tx_time - t_to_dec) > 0.0:
+                            # pop the usr packet off the queue and add it to the tx queue
+                            pkt = self.pop_packet(usr)
+                            self.transmit_queue.appendleft(pkt)
+                            tx_time = tx_time - t_to_dec
+                        else:
+                            done = True
+
+            else:
+                #print "No packets to schedule"
+                done = True
+
+
+    # transmit packets and calculate statistics
     def call_transmitter(self, current_slt):
-        print "\n**Calling Transmitter**"
+        #print "\n**Calling Transmitter**"
+        size_of_tx_deque = len(self.transmit_queue)
+        for q_id in range(size_of_tx_deque):
+            pkt = self.transmit_queue.pop()
+            src = pkt.get("src")
+            dest = pkt.get("dest")
 
-        # if currently transmitting then check if done
-        if self.transmitting_to_MS:
-            if self.tx_expiration <= current_slt:
-                print "TX Finished"
-
-                self.transmitting_to_MS = False
-                src = self.pkt_to_tx.get("src")
-                print src
-                TOD = self.pkt_to_tx.get("TOD")
-                self.delays_per_user[src] += (current_slt - TOD)
-                self.transmissions_per_user[src] += 1
-
-            else:
-                print "Currently TX'ing"
-
-        else:
-            # if transmit queue populates and transmitter idle, pop a packet off and begin transmitting
-            if self.transmit_queue:
-                print "Deque Not Empty"
-
-                # Transmit as many buffers as we can in 1 msec
-
-                self.pkt_to_tx = self.transmit_queue.pop()
-                self.transmitting_to_MS = True
-
-                ms_dest = self.pkt_to_tx.get("dest")
-                print ms_dest
-
-                usr_src = self.pkt_to_tx.get("src")
-                print usr_src
-
-                tx_rate = self.MS_SE[ms_dest] * self.downlink_bw  # bps
-                print tx_rate
-
-                print (self.pkt_to_tx.get("size") / tx_rate) * 1e3
-
-                tx_duration = math.ceil( (self.pkt_to_tx.get("size") / tx_rate) * 1e3)        # msec
-
-
-
-                print int(tx_duration)
-                self.tx_expiration = current_slt + int(tx_duration)
-
-
-            else:
-                print "Deque Empty - Nothing to TX"
+            self.transmissions_per_user[src] += 1
+            self.delays_per_user[src] += (current_slt - pkt.get("TOD"))
+            self.MS_received_pkts[dest] += 1
 
 
     ####################################################################################################################
@@ -225,6 +269,14 @@ class Radio_Resource_Manager(object):
     Helper Functions
     """
     ####################################################################################################################
+    def class_n_packets_avail(self, class_id):
+
+        for usr in self.class_n_usrs[class_id-1]:
+            if len(self.user_queues[usr]) > 0:
+                return True
+
+        return False
+
 
     def randomize_usr_start_time(self, max_num_slts):
         if max_num_slts == 0:
@@ -240,28 +292,28 @@ class Radio_Resource_Manager(object):
 
     def assign_SE_to_MS(self):
         for ms_id in range(self.N_MS):
-            self.MS_SE[ms_id] = self.get_random_MS_Spectral_Efficiency()
+            self.MS_SE[ms_id] = self.get_random_MS_Spectral_Efficiency() * self.downlink_bw
 
 
     def assign_class_to_users(self):
-        self.f = self.N / ((0.3/20e3) + (0.4/200e3) + (0.3/400e3)) # bps
-        self.N1 = int(round((0.3 * self.f)/(20e3)))
-        self.N2 = int(round((0.4 * self.f) / (200e3)))
-        self.N3 = int(round((0.3 * self.f) / (400e3)))
+        self.f = self.N / ((0.3/20.0) + (0.4/200.0) + (0.3/400.0)) # kbps
+        self.N1 = int(round((0.3 * self.f)/(20.0)))
+        self.N2 = int(round((0.4 * self.f) / (200.0)))
+        self.N3 = int(round((0.3 * self.f) / (400.0)))
 
         #self.N1 = (0.3 * self.f)/(20e3)
         #self.N2 = (0.4 * self.f) / (200e3)
         #self.N3 = (0.3 * self.f) / (400e3)
 
-        print "Number of users: %d" %(self.N)
+        #print "Number of users: %d" %(self.N)
         sum_of_users = self.N1 + self.N2 + self.N3
         diff = self.N - sum_of_users
         if diff > 0:
             if diff == 1:
                 self.N2 += 1
-                print "Off by 1, correcting"
+                #print "Off by 1, correcting"
                 #print "User Class Distribution: 1/2/3 = %f/%f/%f " % (self.N1, self.N2, self.N3)
-                print "User Class Distribution: 1/2/3 = %d/%d/%d " % (self.N1, self.N2, self.N3)
+                #print "User Class Distribution: 1/2/3 = %d/%d/%d " % (self.N1, self.N2, self.N3)
 
             else:
                 print "Error: user class distribution no bueno, %d users required" % (self.N)
@@ -269,19 +321,29 @@ class Radio_Resource_Manager(object):
         elif diff< 0:
             if diff == -1:
                 self.N2 += -1
-                print "Off by -1, correcting"
+                #print "Off by -1, correcting"
                 #print "User Class Distribution: 1/2/3 = %f/%f/%f " % (self.N1, self.N2, self.N3)
-                print "User Class Distribution: 1/2/3 = %d/%d/%d " % (self.N1, self.N2, self.N3)
+                #print "User Class Distribution: 1/2/3 = %d/%d/%d " % (self.N1, self.N2, self.N3)
             else:
                 print "Error: More users than %d? Not possible" % (self.N)
                 sys.exit()
         else:
+            a = 0
             #print "User Class Distribution: 1/2/3 = %f/%f/%f " % (self.N1, self.N2, self.N3)
-            print "User Class Distribution: 1/2/3 = %d/%d/%d " % (self.N1, self.N2, self.N3)
+            #print "User Class Distribution: 1/2/3 = %d/%d/%d " % (self.N1, self.N2, self.N3)
 
         self.user_class_map = [1]*self.N1 + [2]*self.N2 + [3]*self.N3
         # print self.user_class_map
         random.shuffle(self.user_class_map)
+        temp_array = np.array(self.user_class_map)
+        class_1_usrs = np.where(temp_array==1)[0]
+        class_2_usrs = np.where(temp_array == 2)[0]
+        class_3_usrs = np.where(temp_array == 3)[0]
+
+        self.class_n_usrs = [class_1_usrs, class_2_usrs, class_3_usrs]
+
+        #print "Class users:"
+        #print self.class_n_usrs
         # print self.user_class_map
 
     def get_class_label(self):
@@ -319,10 +381,11 @@ class Radio_Resource_Manager(object):
             dq = deque()
             self.user_queues.append(dq)
 
-    def get_new_packet(self, src, dest, size, TOD):
+    def get_new_packet(self, src, dest, size, t_MS, TOD):
         new_pkt = packet_s.copy()
         new_pkt["src"] = src
         new_pkt["dest"] = dest
         new_pkt["size"] = size
+        new_pkt["T_MS"] = t_MS
         new_pkt["TOD"] = TOD
         return new_pkt
