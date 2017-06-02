@@ -12,7 +12,7 @@ time_slot_duration = 1.0    # msec
 N_MS = 8                  # number of mobile stations
 
 N_array = [4]   # number of users
-N_array = range(1, 1000)
+#N_array = range(1, 10)
 T = 5         # number of simulations slots
 
 labels = []
@@ -22,17 +22,21 @@ for N in N_array:
     RRM = Radio_Resource_Manager(RRM_id=1, N=N, N_MS=N_MS, downlink_bw=downlink_bw)
     RRM.assign_class_to_users()
     RRM.assign_SE_to_MS()
+    RRM.randomize_usr_start_time(0)
 
-    pkt = RRM.get_new_packet()
-    pkt["src"] = 1
-    pkt["dest"] = 4
-    pkt["size"] = 1600
+    pkt = RRM.get_new_packet(1, 4, 1600, -1)
     RRM.transmit_queue.append(pkt)
 
-    #for slt in range(T):
+    RRM.push_packet(1, pkt)
+    print RRM.user_queues
+    new_pkt = RRM.pop_packet(1)
+    print new_pkt
+    print RRM.user_queues
+
+    for slt in range(T):
 
         # update user state
-        #RRM.update_user_state(current_slt=slt)
+        RRM.update_user_state(current_slt=slt)
 
         # check if a user has a packet to add to scheduler queue
         #RRM.update_user_queues(slt)
