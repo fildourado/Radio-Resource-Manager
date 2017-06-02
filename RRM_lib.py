@@ -2,6 +2,7 @@ import numpy as np
 import random
 import math
 from collections import deque
+import sys
 
 """
 Create helpful data structures
@@ -39,7 +40,7 @@ class Radio_Resource_Manager(object):
     """
 
     def __init__(self, RRM_id, N, N_MS, downlink_bw):
-        print "Initializing Radio Resource Manager"
+        print "\nInitializing Radio Resource Manager (ID %d)" % (RRM_id)
 
         # parameters
         self.RRM_id = RRM_id                            # which RRM is this
@@ -61,8 +62,14 @@ class Radio_Resource_Manager(object):
         self.MS_SE = [0]*self.N_MS                      # contains the spectral efficiencies assigned to each MS
 
 
-        print self.N_burst_1
-        print self.N_burst_2
+        #print self.N_burst_1
+        #print self.N_burst_2
+
+        self.f = 0.0    # total throughput rate requested by N users
+        self.N1 = 0     # number of class 1 users
+        self.N2 = 0     # number of class 2 users
+        self.N3 = 0     # number of class 3 users
+
 
         # state tracking variables
         self.transmit_queue = deque()       # scheduler queued packets that need to be transmitted
@@ -197,9 +204,40 @@ class Radio_Resource_Manager(object):
 
 
     def assign_class_to_users(self):
-        for usr in range(self.N):
-            self.user_class_map[usr] = self.get_class_label()
+        self.f = self.N / ((0.3/20e3) + (0.4/200e3) + (0.3/400e3)) # bps
+        self.N1 = int(round((0.3 * self.f)/(20e3)))
+        self.N2 = int(round((0.4 * self.f) / (200e3)))
+        self.N3 = int(round((0.3 * self.f) / (400e3)))
 
+        #self.N1 = (0.3 * self.f)/(20e3)
+        #self.N2 = (0.4 * self.f) / (200e3)
+        #self.N3 = (0.3 * self.f) / (400e3)
+
+        print "Number of users: %d" %(self.N)
+        sum_of_users = self.N1 + self.N2 + self.N3
+        diff = self.N - sum_of_users
+        if diff > 0:
+            if diff == 1:
+                self.N2 += 1
+                print "Off by 1, correcting"
+                #print "User Class Distribution: 1/2/3 = %f/%f/%f " % (self.N1, self.N2, self.N3)
+                print "User Class Distribution: 1/2/3 = %d/%d/%d " % (self.N1, self.N2, self.N3)
+
+            else:
+                print "Error: user class distribution no bueno, %d users required" % (self.N)
+                sys.exit()
+        elif diff< 0:
+            if diff == -1:
+                self.N2 += -1
+                print "Off by -1, correcting"
+                #print "User Class Distribution: 1/2/3 = %f/%f/%f " % (self.N1, self.N2, self.N3)
+                print "User Class Distribution: 1/2/3 = %d/%d/%d " % (self.N1, self.N2, self.N3)
+            else:
+                print "Error: More users than %d? Not possible" % (self.N)
+                sys.exit()
+        else:
+            #print "User Class Distribution: 1/2/3 = %f/%f/%f " % (self.N1, self.N2, self.N3)
+            print "User Class Distribution: 1/2/3 = %d/%d/%d " % (self.N1, self.N2, self.N3)
 
     def get_class_label(self):
         prob = random.random()

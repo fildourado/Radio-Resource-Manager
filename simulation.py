@@ -11,7 +11,8 @@ downlink_bw = 20e6          # Hz
 time_slot_duration = 1.0    # msec
 N_MS = 8                  # number of mobile stations
 
-N_array = [5]   # number of users
+N_array = [4]   # number of users
+N_array = range(1, 1000)
 T = 5         # number of simulations slots
 
 labels = []
@@ -28,7 +29,7 @@ for N in N_array:
     pkt["size"] = 1600
     RRM.transmit_queue.append(pkt)
 
-    for slt in range(T):
+    #for slt in range(T):
 
         # update user state
         #RRM.update_user_state(current_slt=slt)
@@ -41,7 +42,7 @@ for N in N_array:
 
         # call in transmitter portion of radio
 
-        RRM.call_transmitter(current_slt=slt)
+        #RRM.call_transmitter(current_slt=slt)
 
-    print RRM.transmissions_per_user
-    print RRM.delays_per_user
+    #print RRM.transmissions_per_user
+    #print RRM.delays_per_user
