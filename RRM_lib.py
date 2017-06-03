@@ -54,17 +54,18 @@ class Radio_Resource_Manager(object):
         ################################################################################################################
         # Helpful Constants
         ################################################################################################################
-        self.T_pkt_1 = (class_1.get("packet_size") / class_1.get("des_throughput"))*1e3
-        self.T_pkt_2 = (class_2.get("packet_size") / class_2.get("des_throughput"))*1e3
-        self.T_pkt_3 = (class_3.get("packet_size") / class_3.get("des_throughput"))*1e3
+        self.T_pkt_1 = (class_1.get("packet_size") / class_1.get("des_throughput"))*1e3  # msec
+        self.T_pkt_2 = (class_2.get("packet_size") / class_2.get("des_throughput"))*1e3  # msec
+        self.T_pkt_3 = (class_3.get("packet_size") / class_3.get("des_throughput"))*1e3  # msed
 
         self.N_burst_1 = math.floor(class_1.get("burst") / self.T_pkt_1)            # number of packets to Tx in burst mode
         self.N_burst_2 = math.floor(class_2.get("burst") / self.T_pkt_2)            # number of packets to Tx in burst mode
-        self.c3_packets_per_msec = (0.4e6 / class_3.get("packet_size"))/1000
+        #self.c3_lambda = (0.4e6 / class_3.get("packet_size"))/1000
+        self.c3_lambda = int(self.T_pkt_3) - 1
         #print self.c3_packets_per_msec
 
         self.class_lookup = [class_1, class_2, class_3]                 # quick class lookup table based on class ID
-        self.N_burst_lookup = [self.N_burst_1, self.N_burst_2, -1]
+        self.N_burst_lookup = [self.N_burst_1, self.N_burst_2, None]
 
         #print self.N_burst_1
         #print self.N_burst_2
@@ -126,7 +127,7 @@ class Radio_Resource_Manager(object):
                     self.usr_start_time[usr] = current_slt + 1
                     # generate a tx burst time schedule that is based on a poisson RV
                     if self.burst_tx_time[usr] < current_slt:
-                        self.burst_tx_time[usr] = current_slt + np.random.poisson(self.c3_packets_per_msec, 1)
+                        self.burst_tx_time[usr] = current_slt + np.random.poisson(self.c3_lambda, 1)
                         #print current_slt
                         #print self.burst_tx_time[usr]
 

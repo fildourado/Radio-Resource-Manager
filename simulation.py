@@ -12,7 +12,7 @@ time_slot_duration = 1.0    # msec
 N_MS = 8                  # number of mobile stations
 
 N_array = [4]   # number of users
-N_array = range(1, 100)
+N_array = range(1, 200)
 T = 10000         # number of simulations slots
 
 class_1_throughput = []
