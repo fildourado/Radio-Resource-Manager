@@ -31,6 +31,7 @@ packet_s = {"src": -1,                  # User ID
             "dest": -1,                 # MS ID
             "size": -1,                 # bits
             "T_MS": -1,                 # Time to transmit to MS
+            "R_MS": -1,                 # TX rate achievable from BS to MS
             "TOD": -1,                  # Time of departure from User
             "TOA": -1}                  # Time of arrival at MS
 
@@ -86,12 +87,14 @@ class Radio_Resource_Manager(object):
         self.packet_delays_per_class = [ [], [], [] ]
 
         # default to empty packet
-        self.pkt_to_tx = self.get_new_packet(-1, -1, -1, -1, -1)
+        self.pkt_to_tx = self.get_new_packet(-1, -1, -1, -1,-1, -1)
         self.max_delay_per_class = [-1.0, -1.0, -1.0]
         self.transmitting_to_MS = False
         self.tx_expiration = -1
 
         self.user_class_map = [0] * self.N  # tracks each users class ID
+        self.user_dest_map = [0] * self.N
+        self.get_user_dest_map()
 
         # User queues and transmit queues - actually implemented as deques
         self.transmit_queue = deque()           # scheduler queued packets that need to be transmitted
@@ -183,12 +186,12 @@ class Radio_Resource_Manager(object):
 
                 class_id = self.user_class_map[usr] - 1
                 size = self.class_lookup[class_id]["packet_size"]
+                #dest = self.user_dest_map[usr]
                 dest = self.get_rand_ms_id()
                 tx_rate = self.MS_SE[dest]                          # bps
                 t_MS = (size / tx_rate) * 1e3                       # time to tx to MS
-
                 # make a new packet
-                new_pkt = self.get_new_packet(usr, dest, size, t_MS, current_slt)
+                new_pkt = self.get_new_packet(usr, dest, size, t_MS, tx_rate, current_slt)
 
                 # add the packet to the that users queue
                 self.push_packet(usr, new_pkt)
@@ -216,24 +219,25 @@ class Radio_Resource_Manager(object):
                     # shuffle user list
                     usr_list = self.class_n_usrs[class_id].copy()
                     random.shuffle(usr_list)
-                    for usr in usr_list:
-                        if len(self.user_queues[usr]) > 0:
-                            t_to_dec = self.user_queues[usr][-1].get("T_MS")
-                            if (tx_time - t_to_dec) > 0.0:
-                                # pop the usr packet off the queue and add it to the tx queue
-                                pkt = self.pop_packet(usr)
-                                self.transmit_queue.appendleft(pkt)
-                                tx_time = tx_time - t_to_dec
+                    while empty_users != len(usr_list):
+                        empty_users = 0
+                        for usr in usr_list:
+                            if len(self.user_queues[usr]) > 0:
+                                t_to_dec = self.user_queues[usr][-1].get("T_MS")
+                                if (tx_time - t_to_dec) > 0.0:
+                                    # pop the usr packet off the queue and add it to the tx queue
+                                    pkt = self.pop_packet(usr)
+                                    self.transmit_queue.appendleft(pkt)
+                                    tx_time = tx_time - t_to_dec
+                                else:
+                                    return
                             else:
-                                done = True
-            done = True
+                                empty_users += 1
+
 
     def WRR_scheduler(self, class_durations, current_slt):
 
-
         #Total_Time = 1.0 # msec
-
-
         #while time_tracker < Total_Time:
 
         tx_time = 1.0
@@ -243,9 +247,14 @@ class Radio_Resource_Manager(object):
         done = False
 
         while not done:
-            for usr in self.class_n_usrs[class_id-1]:
+            # shuffle user list
+            usr_list = self.class_n_usrs[class_id-1].copy()
+            random.shuffle(usr_list)
+            empty_users = 0
+            for usr in usr_list:
                 if len(self.user_queues[usr]) > 0:
                     t_to_dec = self.user_queues[usr][-1].get("T_MS")
+
                     if t_to_dec > 1.0:
                         print "Packets are too big for time slot"
                         sys.exit()
@@ -256,47 +265,123 @@ class Radio_Resource_Manager(object):
                         self.transmit_queue.appendleft(pkt)
                         tx_time = tx_time - t_to_dec
                     else:
-                        done = True
+                        return
+                        #done = True
+                else:
+                    empty_users += 1
+
+            # check if all users were empty
+            if empty_users == len(usr_list):
+                return
 
             # done if all user queues check and no one had anything to TX
-            done = True
+            #done = True
+
+
+    def WRR_PFT_scheduler(self, class_durations, current_slt):
+
+        tx_time = 1.0
+
+        #time_tracker += tx_time
+        class_id = self.get_current_class_to_schedule(class_durations=class_durations, current_slt=current_slt)
+        done = False
+
+
+
+        # for classes 1 and 2
+        if class_id != 3:
+
+            k = 0  # slot in the 1 msec transmit queue window
+
+            usr_list = self.class_n_usrs[class_id - 1].copy()
+            random.shuffle(usr_list)
+
+            num_usrs = len(usr_list)
+            if num_usrs == 0:
+                return
+
+            r = [0] * num_usrs
+            TH = [0] * num_usrs
+
+            # calculate all the rates that can be achieved for the last packet in the queue of each user
+            while not done:
+                for usr_i in usr_list:
+                    r = self.user_queues[usr_i][-1].get("R_MS") # achievable rate for this packet
+                    r[usr_i].append(r)
+                    if k > 0:
+                        TH[usr_i].append( (self.b*r[k-1]) + (1-self.b) * r[k])
+                    else:
+                        TH[usr_i].append( (1-self.b) * r[k])
+
+                k += 1
+
+        else:
+            while not done:
+                # shuffle user list
+                usr_list = self.class_n_usrs[class_id-1].copy()
+                random.shuffle(usr_list)
+                empty_users = 0
+                for usr in usr_list:
+                    if len(self.user_queues[usr]) > 0:
+                        t_to_dec = self.user_queues[usr][-1].get("T_MS")
+
+                        if t_to_dec > 1.0:
+                            print "Packets are too big for time slot"
+                            sys.exit()
+
+                        if (tx_time - t_to_dec) > 0.0:
+                            # pop the usr packet off the queue and add it to the tx queue
+                            pkt = self.pop_packet(usr)
+                            self.transmit_queue.appendleft(pkt)
+                            tx_time = tx_time - t_to_dec
+                        else:
+                            return
+                            #done = True
+                    else:
+                        empty_users += 1
+
+                # check if all users were empty
+                if empty_users == len(usr_list):
+                    return
+
 
     def get_current_class_to_schedule(self, class_durations, current_slt):
-
-
-        c1_duration = int(math.floor(class_durations[0]))
-        self.c1_rem += class_durations[0] - c1_duration
-        if self.c1_rem >= 1.0:
-            self.c1_rem = self.c1_rem - 1.0
-            c1_duration += 1
-
-
-
-        c2_duration = int(math.floor(class_durations[1]))
-        self.c2_rem += class_durations[1] - c2_duration
-        if self.c2_rem >= 1.0:
-            self.c2_rem = self.c2_rem - 1.0
-            c2_duration += 1
-
-        c3_duration = int(math.floor(class_durations[2]))
-        self.c3_rem += class_durations[2] - c3_duration
-        if self.c3_rem >= 1.0:
-            self.c3_rem = self.c3_rem - 1.0
-            c3_duration += 1
-
 
         if self.current_class_id == 1:
             if current_slt == self.WRR_exp:
                 self.current_class_id = 2
+
+                c2_duration = int(math.floor(class_durations[1]))
+                self.c2_rem += class_durations[1] - c2_duration
+                if self.c2_rem >= 1.0:
+                    self.c2_rem = self.c2_rem - 1.0
+                    c2_duration += 1
+
                 self.WRR_exp = current_slt + c2_duration
 
         elif self.current_class_id == 2:
             if current_slt == self.WRR_exp:
                 self.current_class_id = 3
+
+                c3_duration = int(math.floor(class_durations[2]))
+                self.c3_rem += class_durations[2] - c3_duration
+                if self.c3_rem >= 1.0:
+                    self.c3_rem = self.c3_rem - 1.0
+                    c3_duration += 1
+
                 self.WRR_exp = current_slt + c3_duration
+
         elif self.current_class_id == 3:
             if current_slt == self.WRR_exp:
                 self.current_class_id = 1
+
+                c1_duration = int(math.floor(class_durations[0]))
+                self.c1_rem += class_durations[0] - c1_duration
+                if self.c1_rem >= 1.0:
+                    self.c1_rem = self.c1_rem - 1.0
+                    c1_duration += 1
+
+
                 self.WRR_exp = current_slt + c1_duration
 
         else:
@@ -325,7 +410,8 @@ class Radio_Resource_Manager(object):
 
 
             self.transmissions_per_user[src] += 1
-            delay = (current_slt - pkt.get("TOD")) + time_tracker
+            delay = (current_slt - pkt.get("TOD")) #+ time_tracker
+
             #self.delays_per_user[src] += delay
             self.MS_received_pkts[dest] += 1
 
@@ -383,6 +469,7 @@ class Radio_Resource_Manager(object):
         # for 30% of MS
         SE_3 = 2.0*self.downlink_bw  # bps/Hz
 
+        # Assign spectral efficiencies consistent with required distribution and then randomize order
         self.MS_SE = [SE_1, SE_1, SE_1, SE_2, SE_2, SE_3, SE_3, SE_3]
         random.shuffle(self.MS_SE)
 
@@ -465,6 +552,10 @@ class Radio_Resource_Manager(object):
         else:
             return SE_3
 
+    def get_user_dest_map(self):
+        for usr in range(self.N):
+            self.user_dest_map[usr] = self.get_rand_ms_id()
+
     def get_rand_ms_id(self):
         return random.randint(0,(self.N_MS-1))
 
@@ -473,11 +564,12 @@ class Radio_Resource_Manager(object):
             dq = deque()
             self.user_queues.append(dq)
 
-    def get_new_packet(self, src, dest, size, t_MS, TOD):
+    def get_new_packet(self, src, dest, size, t_MS, tx_rate, TOD):
         new_pkt = packet_s.copy()
         new_pkt["src"] = src
         new_pkt["dest"] = dest
         new_pkt["size"] = size
         new_pkt["T_MS"] = t_MS
+        new_pkt["R_MS"] = tx_rate
         new_pkt["TOD"] = TOD
         return new_pkt
