@@ -61,7 +61,7 @@ class Radio_Resource_Manager(object):
         self.N_burst_1 = math.floor(class_1.get("burst") / self.T_pkt_1)            # number of packets to Tx in burst mode
         self.N_burst_2 = math.floor(class_2.get("burst") / self.T_pkt_2)            # number of packets to Tx in burst mode
         #self.c3_lambda = (0.4e6 / class_3.get("packet_size"))/1000
-        self.c3_lambda = int(self.T_pkt_3) - 1
+        self.c3_lambda = int(self.T_pkt_3)
         #print self.c3_packets_per_msec
 
         self.class_lookup = [class_1, class_2, class_3]                 # quick class lookup table based on class ID
@@ -127,7 +127,7 @@ class Radio_Resource_Manager(object):
                     self.usr_start_time[usr] = current_slt + 1
                     # generate a tx burst time schedule that is based on a poisson RV
                     if self.burst_tx_time[usr] < current_slt:
-                        self.burst_tx_time[usr] = current_slt + np.random.poisson(self.c3_lambda, 1)
+                        self.burst_tx_time[usr] = current_slt + np.random.poisson(self.c3_lambda - 1, 1)
                         #print current_slt
                         #print self.burst_tx_time[usr]
 
@@ -205,10 +205,29 @@ class Radio_Resource_Manager(object):
         done = False
 
         while not done:
-            if self.class_n_packets_avail(1):
-                #print "Class 1 packets available"
+            for class_id in range(3):
+                if self.class_n_packets_avail(class_id + 1):
+                    for usr in self.class_n_usrs[class_id]:
+                        if len(self.user_queues[usr]) > 0:
+                            t_to_dec = self.user_queues[usr][-1].get("T_MS")
+                            if (tx_time - t_to_dec) > 0.0:
+                                # pop the usr packet off the queue and add it to the tx queue
+                                pkt = self.pop_packet(usr)
+                                self.transmit_queue.appendleft(pkt)
+                                tx_time = tx_time - t_to_dec
+                            else:
+                                done = True
+            done = True
 
-                for usr in self.class_n_usrs[0]:
+    def WRR_scheduler(self):
+
+        class_id = self.get_current_class_to_schedule()
+        done = False
+        tx_time = 1.0 # msec
+
+        while not done:
+            if self.class_n_packets_avail(class_id + 1):
+                for usr in self.class_n_usrs[class_id]:
                     if len(self.user_queues[usr]) > 0:
                         t_to_dec = self.user_queues[usr][-1].get("T_MS")
                         if (tx_time - t_to_dec) > 0.0:
@@ -219,51 +238,48 @@ class Radio_Resource_Manager(object):
                         else:
                             done = True
 
-                done = True
-            elif self.class_n_packets_avail(2):
-                #print "Class 2 packets available"
-                for usr in self.class_n_usrs[1]:
-                    if len(self.user_queues[usr]) > 0:
-                        t_to_dec = self.user_queues[usr][-1].get("T_MS")
-                        if (tx_time - t_to_dec) > 0.0:
-                            # pop the usr packet off the queue and add it to the tx queue
-                            pkt = self.pop_packet(usr)
-                            self.transmit_queue.appendleft(pkt)
-                            tx_time = tx_time - t_to_dec
-                        else:
-                            done = True
+            # done if all user queues check and no one had anything to TX
+            done = True
 
-            elif self.class_n_packets_avail(3):
-                #print "Class 3 packets available"
-                for usr in self.class_n_usrs[2]:
-                    if len(self.user_queues[usr]) > 0:
-                        t_to_dec = self.user_queues[usr][-1].get("T_MS")
-                        if (tx_time - t_to_dec) > 0.0:
-                            # pop the usr packet off the queue and add it to the tx queue
-                            pkt = self.pop_packet(usr)
-                            self.transmit_queue.appendleft(pkt)
-                            tx_time = tx_time - t_to_dec
-                        else:
-                            done = True
+    def get_current_class_to_schedule(self):
 
-            else:
-                #print "No packets to schedule"
-                done = True
+        Tf = 3
+        W = [1.0/3, 1.0/3, 1.0/3]
+
+        T_start = 0
+
+
+
 
 
     # transmit packets and calculate statistics
     def call_transmitter(self, current_slt):
         #print "\n**Calling Transmitter**"
         size_of_tx_deque = len(self.transmit_queue)
+
+        time_tracker = 0.0
+
         for q_id in range(size_of_tx_deque):
+            # pop the packet of the transmite queue and "transmit it"
+            # update statistics tracking
             pkt = self.transmit_queue.pop()
             src = pkt.get("src")
             dest = pkt.get("dest")
 
+
             self.transmissions_per_user[src] += 1
-            self.delays_per_user[src] += (current_slt - pkt.get("TOD"))
+            self.delays_per_user[src] += (current_slt - pkt.get("TOD")) + time_tracker
             self.MS_received_pkts[dest] += 1
 
+            # update the time with the time it took to transmit this packet
+            # this is used to update each packets "delay" because
+            # there is transmit queueing delay incurred by waiting for the packet in front of you to TX
+            time_tracker += pkt.get("T_MS")
+
+
+        if len(self.transmit_queue) != 0:
+            print "Transmit Queue was not emptied"
+            sys.exit()
 
     ####################################################################################################################
     """
