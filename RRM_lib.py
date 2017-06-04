@@ -83,10 +83,11 @@ class Radio_Resource_Manager(object):
         self.delays_per_user = np.zeros(self.N)
         self.transmissions_per_user = np.zeros(self.N)
         self.MS_received_pkts = np.zeros(self.N_MS)
+        self.packet_delays_per_class = [ [], [], [] ]
 
         # default to empty packet
         self.pkt_to_tx = self.get_new_packet(-1, -1, -1, -1, -1)
-
+        self.max_delay_per_class = [-1.0, -1.0, -1.0]
         self.transmitting_to_MS = False
         self.tx_expiration = -1
 
@@ -102,7 +103,12 @@ class Radio_Resource_Manager(object):
         self.N2 = 0     # number of class 2 users
         self.N3 = 0     # number of class 3 users
 
+        self.current_class_id = 3
+        self.WRR_exp = 0
 
+        self.c1_rem = 0.0
+        self.c2_rem = 0.0
+        self.c3_rem = 0.0
 
     def reset(self):
         print "Resetting RRM"
@@ -207,7 +213,10 @@ class Radio_Resource_Manager(object):
         while not done:
             for class_id in range(3):
                 if self.class_n_packets_avail(class_id + 1):
-                    for usr in self.class_n_usrs[class_id]:
+                    # shuffle user list
+                    usr_list = self.class_n_usrs[class_id].copy()
+                    random.shuffle(usr_list)
+                    for usr in usr_list:
                         if len(self.user_queues[usr]) > 0:
                             t_to_dec = self.user_queues[usr][-1].get("T_MS")
                             if (tx_time - t_to_dec) > 0.0:
@@ -219,45 +228,93 @@ class Radio_Resource_Manager(object):
                                 done = True
             done = True
 
-    def WRR_scheduler(self):
+    def WRR_scheduler(self, class_durations, current_slt):
 
-        class_id = self.get_current_class_to_schedule()
+
+        #Total_Time = 1.0 # msec
+
+
+        #while time_tracker < Total_Time:
+
+        tx_time = 1.0
+
+        #time_tracker += tx_time
+        class_id = self.get_current_class_to_schedule(class_durations=class_durations, current_slt=current_slt)
         done = False
-        tx_time = 1.0 # msec
 
         while not done:
-            if self.class_n_packets_avail(class_id + 1):
-                for usr in self.class_n_usrs[class_id]:
-                    if len(self.user_queues[usr]) > 0:
-                        t_to_dec = self.user_queues[usr][-1].get("T_MS")
-                        if (tx_time - t_to_dec) > 0.0:
-                            # pop the usr packet off the queue and add it to the tx queue
-                            pkt = self.pop_packet(usr)
-                            self.transmit_queue.appendleft(pkt)
-                            tx_time = tx_time - t_to_dec
-                        else:
-                            done = True
+            for usr in self.class_n_usrs[class_id-1]:
+                if len(self.user_queues[usr]) > 0:
+                    t_to_dec = self.user_queues[usr][-1].get("T_MS")
+                    if t_to_dec > 1.0:
+                        print "Packets are too big for time slot"
+                        sys.exit()
+
+                    if (tx_time - t_to_dec) > 0.0:
+                        # pop the usr packet off the queue and add it to the tx queue
+                        pkt = self.pop_packet(usr)
+                        self.transmit_queue.appendleft(pkt)
+                        tx_time = tx_time - t_to_dec
+                    else:
+                        done = True
 
             # done if all user queues check and no one had anything to TX
             done = True
 
-    def get_current_class_to_schedule(self):
-
-        Tf = 3
-        W = [1.0/3, 1.0/3, 1.0/3]
-
-        T_start = 0
+    def get_current_class_to_schedule(self, class_durations, current_slt):
 
 
+        c1_duration = int(math.floor(class_durations[0]))
+        self.c1_rem += class_durations[0] - c1_duration
+        if self.c1_rem >= 1.0:
+            self.c1_rem = self.c1_rem - 1.0
+            c1_duration += 1
 
 
 
-    # transmit packets and calculate statistics
+        c2_duration = int(math.floor(class_durations[1]))
+        self.c2_rem += class_durations[1] - c2_duration
+        if self.c2_rem >= 1.0:
+            self.c2_rem = self.c2_rem - 1.0
+            c2_duration += 1
+
+        c3_duration = int(math.floor(class_durations[2]))
+        self.c3_rem += class_durations[2] - c3_duration
+        if self.c3_rem >= 1.0:
+            self.c3_rem = self.c3_rem - 1.0
+            c3_duration += 1
+
+
+        if self.current_class_id == 1:
+            if current_slt == self.WRR_exp:
+                self.current_class_id = 2
+                self.WRR_exp = current_slt + c2_duration
+
+        elif self.current_class_id == 2:
+            if current_slt == self.WRR_exp:
+                self.current_class_id = 3
+                self.WRR_exp = current_slt + c3_duration
+        elif self.current_class_id == 3:
+            if current_slt == self.WRR_exp:
+                self.current_class_id = 1
+                self.WRR_exp = current_slt + c1_duration
+
+        else:
+            print "Error"
+            sys.exit()
+
+        #print "\nCurrent Slot: %d" % (current_slt)
+        #print "ID returned: %d" %(self.current_class_id)
+
+        return self.current_class_id
+
+            # transmit packets and calculate statistics
     def call_transmitter(self, current_slt):
         #print "\n**Calling Transmitter**"
         size_of_tx_deque = len(self.transmit_queue)
 
         time_tracker = 0.0
+
 
         for q_id in range(size_of_tx_deque):
             # pop the packet of the transmite queue and "transmit it"
@@ -268,8 +325,15 @@ class Radio_Resource_Manager(object):
 
 
             self.transmissions_per_user[src] += 1
-            self.delays_per_user[src] += (current_slt - pkt.get("TOD")) + time_tracker
+            delay = (current_slt - pkt.get("TOD")) + time_tracker
+            #self.delays_per_user[src] += delay
             self.MS_received_pkts[dest] += 1
+
+            # track max delay per class
+            if (delay > self.max_delay_per_class[self.user_class_map[src] - 1] ):
+                self.max_delay_per_class[self.user_class_map[src] - 1] = delay
+
+            self.packet_delays_per_class[self.user_class_map[src] - 1].append(delay)
 
             # update the time with the time it took to transmit this packet
             # this is used to update each packets "delay" because
@@ -300,6 +364,7 @@ class Radio_Resource_Manager(object):
             self.usr_start_time = [0] * self.N
         else:
             self.usr_start_time = [random.randrange(0, max_num_slts, 1) for _ in range(self.N)]
+            #print self.usr_start_time
 
     def push_packet(self, usr, pkt):
         self.user_queues[usr].appendleft(pkt)
@@ -308,8 +373,18 @@ class Radio_Resource_Manager(object):
         return self.user_queues[usr].pop()
 
     def assign_SE_to_MS(self):
+
         for ms_id in range(self.N_MS):
             self.MS_SE[ms_id] = self.get_random_MS_Spectral_Efficiency() * self.downlink_bw
+
+        SE_1 = 0.2*self.downlink_bw  # bps/Hz
+        # for 30% of MS
+        SE_2 = 1.0*self.downlink_bw  # bps/Hz
+        # for 30% of MS
+        SE_3 = 2.0*self.downlink_bw  # bps/Hz
+
+        self.MS_SE = [SE_1, SE_1, SE_1, SE_2, SE_2, SE_3, SE_3, SE_3]
+        random.shuffle(self.MS_SE)
 
 
     def assign_class_to_users(self):
