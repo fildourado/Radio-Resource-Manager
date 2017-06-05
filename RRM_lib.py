@@ -68,6 +68,7 @@ class Radio_Resource_Manager(object):
         self.class_lookup = [class_1, class_2, class_3]                 # quick class lookup table based on class ID
         self.N_burst_lookup = [self.N_burst_1, self.N_burst_2, None]
 
+        self.b = 0.8
         #print self.N_burst_1
         #print self.N_burst_2
 
@@ -211,9 +212,8 @@ class Radio_Resource_Manager(object):
         #print "\n**Priority Based Scheduler**"
 
         tx_time = 1.0 # msec
-        done = False
 
-        while not done:
+        while 1 == 1:
             for class_id in range(3):
                 if self.class_n_packets_avail(class_id + 1):
                     # shuffle user list
@@ -234,21 +234,19 @@ class Radio_Resource_Manager(object):
                             else:
                                 empty_users += 1
 
-
     def WRR_scheduler(self, class_durations, current_slt):
-
-        #Total_Time = 1.0 # msec
-        #while time_tracker < Total_Time:
-
         tx_time = 1.0
-
-        #time_tracker += tx_time
         class_id = self.get_current_class_to_schedule(class_durations=class_durations, current_slt=current_slt)
-        done = False
 
-        while not done:
+
+        while 1 == 1:
             # shuffle user list
             usr_list = self.class_n_usrs[class_id-1].copy()
+
+            num_usrs = len(usr_list)
+            if num_usrs == 0:
+                return
+
             random.shuffle(usr_list)
             empty_users = 0
             for usr in usr_list:
@@ -266,7 +264,6 @@ class Radio_Resource_Manager(object):
                         tx_time = tx_time - t_to_dec
                     else:
                         return
-                        #done = True
                 else:
                     empty_users += 1
 
@@ -279,14 +276,8 @@ class Radio_Resource_Manager(object):
 
 
     def WRR_PFT_scheduler(self, class_durations, current_slt):
-
         tx_time = 1.0
-
-        #time_tracker += tx_time
         class_id = self.get_current_class_to_schedule(class_durations=class_durations, current_slt=current_slt)
-        done = False
-
-
 
         # for classes 1 and 2
         if class_id != 3:
@@ -300,23 +291,58 @@ class Radio_Resource_Manager(object):
             if num_usrs == 0:
                 return
 
-            r = [0] * num_usrs
-            TH = [0] * num_usrs
+            r = []
+            TH = []
+            for i in range(self.N):
+                r.append([])
+                TH.append([])
 
             # calculate all the rates that can be achieved for the last packet in the queue of each user
-            while not done:
+            while 1 == 1:
+                empty_users = 0
                 for usr_i in usr_list:
-                    r = self.user_queues[usr_i][-1].get("R_MS") # achievable rate for this packet
-                    r[usr_i].append(r)
-                    if k > 0:
-                        TH[usr_i].append( (self.b*r[k-1]) + (1-self.b) * r[k])
+                    if len(self.user_queues[usr_i]) > 0:
+                        rate = self.user_queues[usr_i][-1].get("R_MS") # achievable rate for this packet
+                        r[usr_i].append(rate)
+                        if k > 0:
+                            TH[usr_i].append( (self.b*r[usr_i][k-1]) + ((1-self.b) * r[usr_i][k]))
+                        else:
+                            TH[usr_i].append((1.0-self.b)*r[usr_i][k])
                     else:
-                        TH[usr_i].append( (1-self.b) * r[k])
+                        r[usr_i].append(-1.0)
+                        TH[usr_i].append(-1.0)
+                        empty_users += 1
 
-                k += 1
+                # check if all users were empty
+                if empty_users == num_usrs:
+                    return
+
+                usr_max = -1
+                current_max = -1.0
+                # find the user that maximizes the max(r(i,k)/TH(i,k)) functions
+                for usr_i in usr_list:
+                    if r[usr_i][k] > 0.0:
+                        this_max = r[usr_i][k]/TH[usr_i][k]
+                        if this_max > current_max:
+                            current_max = this_max
+                            usr_max = usr_i
+
+                if len(self.user_queues[usr_max]) > 0:
+                    t_to_dec = self.user_queues[usr_max][-1].get("T_MS")
+                    if (tx_time - t_to_dec) > 0.0:
+                        # pop the usr packet off the queue and add it to the tx queue
+                        pkt = self.pop_packet(usr_max)
+                        self.transmit_queue.appendleft(pkt)
+                        tx_time = tx_time - t_to_dec
+                        k += 1
+                    else:
+                        return
+                else:
+                    print "User with max has nothing to pop"
+                    sys.exit()
 
         else:
-            while not done:
+            while 1 == 1:
                 # shuffle user list
                 usr_list = self.class_n_usrs[class_id-1].copy()
                 random.shuffle(usr_list)
@@ -344,9 +370,7 @@ class Radio_Resource_Manager(object):
                 if empty_users == len(usr_list):
                     return
 
-
     def get_current_class_to_schedule(self, class_durations, current_slt):
-
         if self.current_class_id == 1:
             if current_slt == self.WRR_exp:
                 self.current_class_id = 2

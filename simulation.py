@@ -13,8 +13,9 @@ N_MS = 8                  # number of mobile stations
 
 
 scheduler = 1
+
 T = 100000         # number of simulations slots
-Tf = 20 #90  # 1 msec slots
+Tf = 30 #90  # 1 msec slots
 
 backoff = 0.0 # 3.0
 c1_bf = 15.0
@@ -22,9 +23,9 @@ c1_bf = 15.0
 #c2_per = (100.0/3) + c1_bf + backoff/2
 #c3_per = (100.0/3) - backoff
 
-c1_per = 30.0
-c2_per = 56.0
-c3_per = 14.0
+c1_per = 28.0 - 2.5
+c2_per = 56.5 - 2.5
+c3_per = 15.5 + 5
 
 W = np.array([c1_per / 100, c2_per / 100, c3_per / 100])
 
@@ -43,7 +44,7 @@ elif scheduler == 1:
     N_usrs = 80
 
 elif scheduler == 2:
-    N_usrs = 50
+    N_usrs = 80
 
 else:
     print "Scheduler Error"
