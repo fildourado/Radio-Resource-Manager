@@ -12,20 +12,15 @@ time_slot_duration = 1.0    # msec
 N_MS = 8                  # number of mobile stations
 
 
-scheduler = 1
+scheduler = 0
 
 T = 100000         # number of simulations slots
 Tf = 30 #90  # 1 msec slots
 
-backoff = 0.0 # 3.0
-c1_bf = 15.0
-#c1_per = (100.0/3) - c1_bf + backoff/2
-#c2_per = (100.0/3) + c1_bf + backoff/2
-#c3_per = (100.0/3) - backoff
-
-c1_per = 28.0 - 2.5
-c2_per = 56.5 - 2.5
-c3_per = 15.5 + 5
+backoff = -0.0
+c1_per = 28.0 - backoff/2
+c2_per = 56.5 - backoff/2
+c3_per = 15.5 + backoff
 
 W = np.array([c1_per / 100, c2_per / 100, c3_per / 100])
 
@@ -38,13 +33,13 @@ if c_sum != 100.0:
 
 
 if scheduler == 0:
-    N_usrs = 130
+    N_usrs = 100
 
 elif scheduler == 1:
-    N_usrs = 80
+    N_usrs = 70
 
 elif scheduler == 2:
-    N_usrs = 80
+    N_usrs = 70
 
 else:
     print "Scheduler Error"
@@ -75,6 +70,9 @@ class_3_std_delay = []
 class_1_max_delay = []
 class_2_max_delay = []
 class_3_max_delay = []
+
+c1_pop_below_QOS = []
+c2_pop_below_QOS = []
 
 for N in N_array:
 
@@ -166,40 +164,43 @@ for N in N_array:
     #c2_delays = d_per_usr[c2_idx]
     #c3_delays = d_per_usr[c3_idx]
 
-    c1_delays_per_user = np.array(RRM.packet_delays_per_class[0])
-    if len(c1_delays_per_user) == 0:
-        c1_delays_per_user = np.zeros(1)
+    c1_delays_per_class = np.array(RRM.packet_delays_per_class[0])
+    if len(c1_delays_per_class) == 0:
+        c1_delays_per_class = np.zeros(1)
 
-    c2_delays_per_user = np.array(RRM.packet_delays_per_class[1])
-    if len(c2_delays_per_user) == 0:
-        c2_delays_per_user = np.zeros(1)
+    c2_delays_per_class = np.array(RRM.packet_delays_per_class[1])
+    if len(c2_delays_per_class) == 0:
+        c2_delays_per_class = np.zeros(1)
 
-    c3_delays_per_user = np.array(RRM.packet_delays_per_class[2])
-    if len(c3_delays_per_user) == 0:
-        c3_delays_per_user = np.zeros(1)
+    c3_delays_per_class = np.array(RRM.packet_delays_per_class[2])
+    if len(c3_delays_per_class) == 0:
+        c3_delays_per_class = np.zeros(1)
 
-    c1_avg_delays = np.average(c1_delays_per_user)
-    c2_avg_delays = np.average(c2_delays_per_user)
-    c3_avg_delays = np.average(c3_delays_per_user)
+    c1_avg_delays = np.average(c1_delays_per_class)
+    c2_avg_delays = np.average(c2_delays_per_class)
+    c3_avg_delays = np.average(c3_delays_per_class)
 
     class_1_avg_delay.append(c1_avg_delays)
     class_2_avg_delay.append(c2_avg_delays)
     class_3_avg_delay.append(c3_avg_delays)
 
-    c1_std_delays = np.std(c1_delays_per_user)
-    c2_std_delays = np.std(c2_delays_per_user)
-    c3_std_delays = np.std(c3_delays_per_user)
+    c1_std_delays = np.std(c1_delays_per_class)
+    c2_std_delays = np.std(c2_delays_per_class)
+    c3_std_delays = np.std(c3_delays_per_class)
 
     class_1_std_delay.append(c1_std_delays)
     class_2_std_delay.append(c2_std_delays)
     class_3_std_delay.append(c3_std_delays)
 
+    # percent of packets with delay below
+    c1_pop_below_QOS.append( 100.0*len(np.where(c1_delays_per_class < 60.0)[0]) / len(c1_delays_per_class))
+    c2_pop_below_QOS.append( 100.0*len(np.where(c2_delays_per_class < 360.0)[0]) / len(c2_delays_per_class))
 
 
 plt.figure(1)
-plt.plot(N_array, class_1_throughput, label='Class 1')
-plt.plot(N_array, class_2_throughput, label='Class 2')
-plt.plot(N_array, class_3_throughput, label='Class 3')
+plt.plot(N_array, class_1_throughput, label='Class 1', color='r')
+plt.plot(N_array, class_2_throughput, label='Class 2', color='b')
+plt.plot(N_array, class_3_throughput, label='Class 3', color='g')
 plt.legend()
 plt.grid()
 plt.xlabel("Number of Users")
@@ -207,6 +208,7 @@ plt.ylabel("Throughput (Kbps)")
 plt.title("Number of Users vs Throughput Per Class")
 if scheduler == 0:
     plt.savefig("figures/Priority_Oriented_Throughput.png")
+    a = 0
 elif scheduler == 1:
     plt.savefig("figures/WRR_Throughput.png")
 elif scheduler == 2:
@@ -235,6 +237,7 @@ plt.ylim([0, 700])
 
 if scheduler == 0:
     plt.savefig("figures/Priority_Oriented_Avg_Delay.png")
+    a = 0
 elif scheduler == 1:
     plt.savefig("figures/WRR_Avg_Delay.png")
 elif scheduler == 2:
@@ -252,10 +255,27 @@ plt.ylabel("Standard Deviation of Delay (ms)")
 plt.title("Number of Users vs Standard Deviation of Delay Per Class")
 if scheduler == 0:
     plt.savefig("figures/Priority_Oriented_Std_Delay.png")
+    a = 0
 elif scheduler == 1:
     plt.savefig("figures/WRR_Std_Delay.png")
 elif scheduler == 2:
     plt.savefig("figures/WRR_PFT_Std_Delay.png")
 
 
+plt.figure(4)
+plt.plot(N_array, c1_pop_below_QOS, label='Class 1 (Below 60 msec)', color='r')
+plt.plot(N_array, c1_pop_below_QOS, label='Class 2 (Below 360 msec)', color='b')
 
+plt.plot(N_array, np.ones(len(N_array))*90.0, label='90% Threshold', color='g', linestyle='--')
+
+plt.legend()
+plt.grid()
+plt.xlabel("Number of Users")
+plt.ylabel("Percent of Packets")
+plt.title("Percent of Packets Below Class 1 and Class 2 QoS Delay Restriction")
+if scheduler == 0:
+    plt.savefig("figures/Priority_Oriented_POP_Delay.png")
+elif scheduler == 1:
+    plt.savefig("figures/WRR_POP_Delay.png")
+elif scheduler == 2:
+    plt.savefig("figures/WRR_PFT_POP_Delay.png")
