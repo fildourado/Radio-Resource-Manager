@@ -87,8 +87,8 @@ class Radio_Resource_Manager(object):
         self.transmissions_per_user = np.zeros(self.N)
         self.MS_received_pkts = []
 
-        #for i in range(self.N_MS):
-        #    self.MS_received_pkts.append([])
+        for i in range(self.N_MS):
+            self.MS_received_pkts.append([0,0,0])
 
         self.packet_delays_per_class = [ [], [], [] ]
 
@@ -442,7 +442,7 @@ class Radio_Resource_Manager(object):
             delay = (current_slt - pkt.get("TOD")) + time_tracker
 
             #self.delays_per_user[src] += delay
-            #self.MS_received_pkts[dest][pkt_class_id] += 1
+            self.MS_received_pkts[dest][pkt_class_id] += 1
 
             # track max delay per class
             if (delay > self.max_delay_per_class[self.user_class_map[src] - 1] ):
@@ -500,7 +500,7 @@ class Radio_Resource_Manager(object):
 
         # Assign spectral efficiencies consistent with required distribution and then randomize order
         self.MS_SE = [SE_1, SE_1, SE_1, SE_2, SE_2, SE_3, SE_3, SE_3]
-        random.shuffle(self.MS_SE)
+        #random.shuffle(self.MS_SE)
 
 
     def assign_class_to_users(self):

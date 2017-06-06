@@ -11,12 +11,12 @@ downlink_bw = 20e6          # Hz
 time_slot_duration = 1.0    # msec
 N_MS = 8                  # number of mobile stations
 
+# Choose the Scheduler to use
+scheduler = 2
 
-scheduler = 0
+T = 10000         # number of simulations slots
 
-T = 100000         # number of simulations slots
 Tf = 30 #90  # 1 msec slots
-
 backoff = -0.0
 c1_per = 28.0 - backoff/2
 c2_per = 56.5 - backoff/2
@@ -73,6 +73,10 @@ class_3_max_delay = []
 
 c1_pop_below_QOS = []
 c2_pop_below_QOS = []
+
+MS_throughput = []
+for i in range(N_MS):
+    MS_throughput.append([[], [], []])
 
 for N in N_array:
 
@@ -196,6 +200,15 @@ for N in N_array:
     c1_pop_below_QOS.append( 100.0*len(np.where(c1_delays_per_class < 60.0)[0]) / len(c1_delays_per_class))
     c2_pop_below_QOS.append( 100.0*len(np.where(c2_delays_per_class < 360.0)[0]) / len(c2_delays_per_class))
 
+    for i in range(N_MS):
+        ms_c1_t = (1.0*RRM.MS_received_pkts[i][0] / (T * 1e-3)) # packets/sec
+        ms_c2_t = (1.0*RRM.MS_received_pkts[i][1] / (T * 1e-3)) # packets/sec
+        ms_c3_t = (1.0*RRM.MS_received_pkts[i][2] / (T * 1e-3)) # packets/sec
+
+        MS_throughput[i][0].append(ms_c1_t)
+        MS_throughput[i][1].append(ms_c1_t)
+        MS_throughput[i][2].append(ms_c1_t)
+
 
 plt.figure(1)
 plt.plot(N_array, class_1_throughput, label='Class 1', color='r')
@@ -207,13 +220,14 @@ plt.xlabel("Number of Users")
 plt.ylabel("Throughput (Kbps)")
 plt.title("Number of Users vs Throughput Per Class")
 if scheduler == 0:
-    plt.savefig("figures/Priority_Oriented_Throughput.png")
+    #plt.savefig("figures/Priority_Oriented_Throughput.png")
     a = 0
 elif scheduler == 1:
-    plt.savefig("figures/WRR_Throughput.png")
+    #plt.savefig("figures/WRR_Throughput.png")
+    a = 0
 elif scheduler == 2:
-    plt.savefig("figures/WRR_PFT_Throughput.png")
-
+    #plt.savefig("figures/WRR_PFT_Throughput.png")
+    a = 0
 #plt.show()
 
 plt.figure(2)
@@ -236,13 +250,14 @@ plt.ylim([0, 700])
 
 
 if scheduler == 0:
-    plt.savefig("figures/Priority_Oriented_Avg_Delay.png")
+    #plt.savefig("figures/Priority_Oriented_Avg_Delay.png")
     a = 0
 elif scheduler == 1:
-    plt.savefig("figures/WRR_Avg_Delay.png")
+    #plt.savefig("figures/WRR_Avg_Delay.png")
+    a = 0
 elif scheduler == 2:
-    plt.savefig("figures/WRR_PFT_Avg_Delay.png")
-
+    #plt.savefig("figures/WRR_PFT_Avg_Delay.png")
+    a = 0
 
 plt.figure(3)
 plt.plot(N_array, class_1_std_delay, label='Class 1', color='r')
@@ -254,13 +269,14 @@ plt.xlabel("Number of Users")
 plt.ylabel("Standard Deviation of Delay (ms)")
 plt.title("Number of Users vs Standard Deviation of Delay Per Class")
 if scheduler == 0:
-    plt.savefig("figures/Priority_Oriented_Std_Delay.png")
+    #plt.savefig("figures/Priority_Oriented_Std_Delay.png")
     a = 0
 elif scheduler == 1:
-    plt.savefig("figures/WRR_Std_Delay.png")
+    #plt.savefig("figures/WRR_Std_Delay.png")
+    a = 0
 elif scheduler == 2:
-    plt.savefig("figures/WRR_PFT_Std_Delay.png")
-
+    #plt.savefig("figures/WRR_PFT_Std_Delay.png")
+    a = 0
 
 plt.figure(4)
 plt.plot(N_array, c1_pop_below_QOS, label='Class 1 (Below 60 msec)', color='r')
@@ -274,8 +290,43 @@ plt.xlabel("Number of Users")
 plt.ylabel("Percent of Packets")
 plt.title("Percent of Packets Below Class 1 and Class 2 QoS Delay Restriction")
 if scheduler == 0:
-    plt.savefig("figures/Priority_Oriented_POP_Delay.png")
+    #plt.savefig("figures/Priority_Oriented_POP_Delay.png")
+    a = 0
 elif scheduler == 1:
-    plt.savefig("figures/WRR_POP_Delay.png")
+    #plt.savefig("figures/WRR_POP_Delay.png")
+    a = 0
 elif scheduler == 2:
-    plt.savefig("figures/WRR_PFT_POP_Delay.png")
+    #plt.savefig("figures/WRR_PFT_POP_Delay.png")
+    a = 0
+
+# plot the throughput for per class for each MS
+for i in range(N_MS):
+    plt.figure((5 + i))
+
+    filename = "MS_%d_Throughput_" % (i)
+    s_name = ""
+    if scheduler == 0:
+        s_name = "PO.png"
+    elif scheduler == 1:
+        s_name = "WRR.png"
+    elif scheduler == 2:
+        s_name = "WRR_PFT.png"
+
+    c1_throughput = (np.array(MS_throughput[i][0]) * RRM.class_lookup[0].get("packet_size"))/1e6
+    c2_throughput = (np.array(MS_throughput[i][1]) * RRM.class_lookup[1].get("packet_size"))/1e6
+    c3_throughput = (np.array(MS_throughput[i][2]) * RRM.class_lookup[2].get("packet_size"))/1e6
+
+    plt.plot(N_array, c1_throughput, label='Class 1', color='r')
+    plt.plot(N_array, c2_throughput, label='Class 2', color='g')
+    plt.plot(N_array, c3_throughput, label='Class 3', color='b')
+    plt.plot(N_array, np.ones(len(N_array))*RRM.MS_SE[i]/1e6, label='Max Throughput', color='k', linestyle='--')
+
+    plt.legend()
+    plt.grid()
+    plt.xlabel("Number of Users")
+    plt.ylabel("Throughput (Mbps)")
+    title_n = "Number of Users vs Mobile Station %d Throughput Per Class" % (i)
+    plt.title(title_n)
+    path = "figures/"+filename+s_name
+    plt.savefig(path)
+
