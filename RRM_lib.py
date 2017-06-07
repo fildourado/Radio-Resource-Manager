@@ -45,17 +45,17 @@ class Radio_Resource_Manager(object):
     def __init__(self, RRM_id, N, N_MS, downlink_bw):
         print "\nInitializing Radio Resource Manager (ID %d) and %d users" % (RRM_id, N)
 
-        ################################################################################################################
+        ##########################
         # Input Parameters
-        ################################################################################################################
+        ##########################
         self.RRM_id = RRM_id                            # which RRM is this
         self.N = N                                      # number of users
         self.N_MS = N_MS                                # number of mobile stations
         self.downlink_bw = downlink_bw                  # downlink bw
 
-        ################################################################################################################
+        ##########################
         # Helpful Constants
-        ################################################################################################################
+        ##########################
         self.T_pkt_1 = (class_1.get("packet_size") / class_1.get("des_throughput"))*1e3  # msec
         self.T_pkt_2 = (class_2.get("packet_size") / class_2.get("des_throughput"))*1e3  # msec
         self.T_pkt_3 = (class_3.get("packet_size") / class_3.get("des_throughput"))*1e3  # msed
@@ -74,9 +74,9 @@ class Radio_Resource_Manager(object):
         #print self.N_burst_2
 
 
-        ################################################################################################################
+        ##########################
         # State Tracking Variables
-        ################################################################################################################
+        ##########################
         self.usr_state = [0]*self.N
         self.MS_SE = [0]*self.N_MS                      # contains the spectral efficiencies assigned to each MS
         self.usr_start_time = [-1] * self.N
@@ -122,11 +122,11 @@ class Radio_Resource_Manager(object):
     def reset(self):
         print "Resetting RRM"
 
-    ####################################################################################################################
+    ##########################
     """
     Main Functions
     """
-    ####################################################################################################################
+    ##########################
 
     def update_user_state(self, current_slt):
         #print "\nUpdating User State**"
@@ -460,11 +460,11 @@ class Radio_Resource_Manager(object):
             print "Transmit Queue was not emptied"
             sys.exit()
 
-    ####################################################################################################################
+    ##########################
     """
     Helper Functions
     """
-    ####################################################################################################################
+    ##########################
     def class_n_packets_avail(self, class_id):
 
         for usr in self.class_n_usrs[class_id-1]:
