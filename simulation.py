@@ -219,14 +219,14 @@ plt.grid()
 plt.xlabel("Number of Users")
 plt.ylabel("Throughput (Kbps)")
 plt.title("Number of Users vs Throughput Per Class")
-"""
+
 if scheduler == 0:
     plt.savefig("figures/Priority_Oriented_Throughput.png")
 elif scheduler == 1:
     plt.savefig("figures/WRR_Throughput.png")
 elif scheduler == 2:
     plt.savefig("figures/WRR_PFT_Throughput.png")
-"""
+
 
 #plt.show()
 
@@ -247,14 +247,12 @@ plt.ylabel("Average Delay (ms)")
 plt.title("Number of Users vs Average Delay Per Class")
 plt.ylim([0, 700])
 
-"""
 if scheduler == 0:
     plt.savefig("figures/Priority_Oriented_Avg_Delay.png")
 elif scheduler == 1:
     plt.savefig("figures/WRR_Avg_Delay.png")
 elif scheduler == 2:
     plt.savefig("figures/WRR_PFT_Avg_Delay.png")
-"""
 
 plt.figure(3)
 plt.plot(N_array, class_1_std_delay, label='Class 1', color='r')
@@ -266,7 +264,6 @@ plt.xlabel("Number of Users")
 plt.ylabel("Standard Deviation of Delay (ms)")
 plt.title("Number of Users vs Standard Deviation of Delay Per Class")
 
-"""
 if scheduler == 0:
     plt.savefig("figures/Priority_Oriented_Std_Delay.png")
 elif scheduler == 1:
@@ -274,7 +271,7 @@ elif scheduler == 1:
 
 elif scheduler == 2:
     plt.savefig("figures/WRR_PFT_Std_Delay.png")
-"""
+
 
 plt.figure(4)
 plt.plot(N_array, c1_pop_below_QOS, label='Class 1 (Below 60 msec)', color='r')
@@ -316,7 +313,7 @@ for i in range(N_MS):
     plt.plot(N_array, c2_throughput, label='Class 2', color='g')
     plt.plot(N_array, c3_throughput, label='Class 3', color='b')
     plt.plot(N_array, np.ones(len(N_array))*RRM.MS_SE[i]/1e6, label='Max Throughput', color='k', linestyle='--')
-    """
+
     plt.legend()
     plt.grid()
     plt.xlabel("Number of Users")
@@ -325,4 +322,3 @@ for i in range(N_MS):
     plt.title(title_n)
     path = "figures/"+filename+s_name
     plt.savefig(path)
-    """
